@@ -1,37 +1,38 @@
 """
-head_init.py — Final layer initialization (student-implemented).
+head_init.py — Initialization of the new CIFAR100 classification head.
 
-Students: Implement `init_last_layer` to control how the new classification
-head is initialized before fine-tuning begins. The skeleton below uses
-Kaiming uniform weights and zero bias — you are expected to experiment with
-alternatives (e.g. Xavier, orthogonal, small-scale random, learned bias init).
+Strategy
+--------
+The downstream optimiser (see ``zo_optimizer.py``) replaces the head with
+a closed-form linear-probe solution computed from cached features on its
+very first ``.step()``. Consequently the role of this initialiser is
+limited to providing a numerically benign starting point that:
+
+  * keeps the initial cross-entropy near the uniform baseline log(K)≈4.61
+    so that the first ``loss_fn`` evaluation does not explode, and
+  * does not bias the optimiser toward any particular class.
+
+We use **small-scale Xavier uniform** for the weight matrix and zero
+initialisation for the bias. Xavier preserves the variance of the
+activations entering the head, and the additional shrinkage factor of
+0.01 ensures that initial logits are concentrated near the origin so that
+``softmax`` produces a near-uniform predictive distribution — the
+maximum-entropy starting point for a 100-class classifier.
 """
 
-import torch
 import torch.nn as nn
 
 
 def init_last_layer(layer: nn.Linear) -> None:
-    """Initialize the weights and bias of the final classification layer in-place.
+    """Initialize the final classification head in-place.
 
-    This function is called once during model construction (see model.py).
-    Modify it to experiment with different initialization strategies and observe
-    their effect on the "initialized head" evaluation checkpoint.
+    Applies Xavier uniform initialisation to the weight matrix scaled by
+    a conservative shrinkage factor, and zeroes the bias. This yields a
+    near-uniform output distribution prior to any fine-tuning.
 
     Args:
-        layer: The ``nn.Linear`` layer that serves as the new CIFAR100 head.
-               Modifies the layer in-place; return value is ignored.
-
-    Student task:
-        Replace or extend the skeleton below. Some strategies to consider:
-          - ``nn.init.xavier_uniform_``  — preserves variance across layers
-          - ``nn.init.orthogonal_``      — encourages diverse feature directions
-          - Small-scale init (e.g. scale weights by 0.01) — conservative start
-          - Non-zero bias init           — useful when class priors are known
+        layer: The ``nn.Linear`` head appended to the backbone.
     """
-    # -------------------------------------------------------------------------
-    # STUDENT: Replace or extend the initialization below.
-    # -------------------------------------------------------------------------
-    nn.init.kaiming_uniform_(layer.weight, nonlinearity="relu")
+    nn.init.xavier_uniform_(layer.weight)
+    layer.weight.data.mul_(0.01)
     nn.init.zeros_(layer.bias)
-    # -------------------------------------------------------------------------
